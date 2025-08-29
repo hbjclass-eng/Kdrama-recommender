@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>K드라마 추천 서비스(세바스찬)</title>
+  <style>
+    body{font-family:system-ui,Apple SD Gothic Neo,Segoe UI,Roboto,맑은 고딕,sans-serif;max-width:900px;margin:24px auto;padding:0 16px}
+    h1{margin-bottom:8px}
+    .section{border:1px solid #e5e5e5;border-radius:16px;padding:16px;margin:16px 0}
+    .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+    .pill{background:#f2f2f2;border-radius:999px;padding:2px 10px;font-size:12px}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .card{border:1px solid #ddd;border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04);padding:8px}
+    .card img{width:100%;height:200px;object-fit:cover;border-radius:10px;margin-bottom:8px}
+    .btn{display:inline-flex;align-items:center;gap:6px;border:1px solid #ddd;background:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
+    .btn:hover{background:#f8f8f8}
+  </style>
+  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+  <h1>K드라마 추천 서비스(세바스찬)</h1>
+  <div class="section">
+    <div><b>당신의 장르 선호도를 입력하세요 (1~5)</b></div>
+    <div class="row" id="pref-inputs"></div>
+    <button class="btn" id="submit">추천 받기</button>
+  </div>
+
+  <section id="result" class="section" style="display:none;">
+    <div class="row" style="justify-content:space-between;">
+      <b>추천된 드라마 Top 3</b>
+      <button class="btn" id="reset">← 다시 입력하기</button>
+    </div>
+    <div style="height:8px"></div>
+    <div class="grid" id="reco"></div>
+    <div style="margin-top:12px; text-align:center; font-size:14px; color:#555;">
+      입력한 장르 선호도를 바탕으로 가장 잘 맞는 드라마를 추천합니다.
+    </div>
+  </section>
+
+<script>
+let ITEMS=[]; // {id, name, vec}
+const FEATURES=["로맨스","판타지","감동","코믹","교훈","힐링","액션","스릴러"];
+
+function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#039;'); }
+
+function imgOnError(img){
+  img.onerror=null;
+  img.src = `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'><rect width='100%' height='100%' fill='%23f3f4f6'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='system-ui' font-size='18' fill='%23666'>이미지 없음</text></svg>`;
+}
+
+async function loadCSV(){
+  const url = 'data/K드라마데이터.csv' + `?v=${Date.now()}`;
+  const res = await fetch(url);
+  const text = await res.text();
+  const parsed = Papa.parse(text, {skipEmptyLines:true});
+  const rows = parsed.data;
+  if(rows.length<2) return;
+
+  ITEMS = [];
+  for(let i=1;i<rows.length;i++){
+    const r = rows[i];
+    if(!r || r.length<10) continue;
+    const id = String(r[0]).trim();
+    const name = r[1];
+    const vec = r.slice(2).map(v => Number(v||0));
+    ITEMS.push({id, name, vec});
+  }
+}
+
+function buildPrefInputs(){
+  const wrap=document.getElementById('pref-inputs');
+  wrap.innerHTML = FEATURES.map((f,idx)=>{
+    return `<label>${f}: <input type="number" id="pref-${idx}" min="1" max="5" value="3" style="width:50px"></label>`;
+  }).join(' ');
+}
+
+function euclidean(a,b){
+  let sum=0; for(let i=0;i<a.length;i++){ const d=(a[i]-b[i]); sum+=d*d; }
+  return Math.sqrt(sum);
+}
+
+function recommend(){
+  const prefs = FEATURES.map((_,i)=> Number(document.getElementById('pref-'+i).value||0));
+  const list=[];
+  for(let i=0;i<ITEMS.length;i++){
+    list.push({i, dist: euclidean(prefs, ITEMS[i].vec)});
+  }
+  list.sort((a,b)=>a.dist-b.dist);
+  return list.slice(0,3);
+}
+
+function renderRecommendations(top){
+  const wrap=document.getElementById('reco');
+  wrap.innerHTML=top.map((t,rank)=>{
+    const it=ITEMS[t.i];
+    return `<div class="card">
+      <img src="img/${it.id}.jpg" alt="${escapeHtml(it.name)}" onerror="imgOnError(this)">
+      <div><b>${rank+1}. ${escapeHtml(it.name)}</b></div>
+      <div class="pill">거리 ${Math.round(t.dist*100)/100}</div>
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('submit').addEventListener('click',()=>{
+  const top = recommend();
+  renderRecommendations(top);
+  document.getElementById('result').style.display='block';
+});
+
+document.getElementById('reset').addEventListener('click',()=>{
+  document.getElementById('result').style.display='none';
+});
+
+loadCSV();
+buildPrefInputs();
+</script>
+</body>
+</html>
