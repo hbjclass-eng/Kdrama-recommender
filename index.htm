@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>K드라마 추천 서비스(세바스찬)</title>
+  <style>
+    /* ===== TV 배경 ===== */
+    :root{
+      --bg:#0b0f14;           /* 바깥 배경 */
+      --tv:#111826;           /* TV 프레임 */
+      --screen:#0e1420;       /* 화면 안쪽 */
+      --stroke:#64748b;       /* 기본 선색 */
+      --text:#e5e7eb;         /* 텍스트 */
+      --muted:#94a3b8;        /* 보조 텍스트 */
+      --accent:#60a5fa;       /* 포커스 */
+      --card:#0c1220;
+    }
+    html,body{height:100%}
+    body{
+      margin:0; background:radial-gradient(1200px 600px at 50% -10%, #172033, #0b0f14 60%); color:var(--text);
+      font-family:system-ui,Apple SD Gothic Neo,Segoe UI,Roboto,맑은 고딕,sans-serif;
+      display:flex; align-items:center; justify-content:center; padding:24px;
+    }
+
+    .tv{
+      width:min(1000px, 96vw); border-radius:28px; background:var(--tv);
+      box-shadow: 0 40px 120px rgba(0,0,0,.35), inset 0 0 0 2px rgba(255,255,255,.04);
+      padding:18px; position:relative;
+    }
+    .bezel{
+      border-radius:20px; background:linear-gradient(180deg,#111b2c,#0b1222);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.04), inset 0 0 40px rgba(0,0,0,.5);
+      padding:18px; position:relative;
+    }
+    .screen{
+      border-radius:16px; background:linear-gradient(180deg,#0c1424,#0a1120);
+      position:relative; overflow:hidden; padding:20px 20px 28px;
+      box-shadow: inset 0 0 80px rgba(0,0,0,.55);
+    }
+    /* 스캔라인 효과 */
+    .screen::before{
+      content:""; position:absolute; inset:0; pointer-events:none; opacity:.14;
+      background:repeating-linear-gradient(180deg, rgba(255,255,255,.06) 0 1px, transparent 1px 3px);
+    }
+    .glow{
+      position:absolute; inset:-6% -6% auto -6%; height:30%; filter:blur(32px); opacity:.25; z-index:-1;
+      background:radial-gradient(600px 160px at 50% 0%, #60a5fa33, transparent 60%);
+    }
+
+    /* ===== 레이아웃 ===== */
+    .header{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px}
+    h1{margin:0; font-size:22px}
+    .btn{display:inline-flex; align-items:center; gap:6px; border:1px solid #1f2937; background:#0b1220; color:#dbeafe;
+         border-radius:10px; padding:8px 12px; cursor:pointer}
+    .btn:hover{background:#0f1628}
+
+    .section{background:var(--card); border:1px solid #1f2a40; border-radius:14px; padding:16px; margin:12px 0}
+    .muted{color:var(--muted); font-size:12px}
+
+    /* ===== 별점(0~5) – 가로 6개, 세로 한 줄 ===== */
+    .question{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-radius:12px; border:1px solid #18243a; background:#0b1324}
+    .qname{font-weight:600; color:#dbeafe}
+    .rating{display:flex; flex-direction:row-reverse; gap:8px}
+    .rating input{position:absolute; opacity:0; pointer-events:none}
+    .rating label{cursor:pointer; display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:10px}
+    .rating svg{width:22px; height:22px; stroke:#425776; fill:none; stroke-width:1.8; transition:transform .06s ease}
+    .rating label:hover{transform:translateY(-1px)}
+
+    /* 체크된 값까지 채움 */
+    .rating input:checked ~ label svg{fill:#ffd54d; stroke:#f4b400}
+    /* 호버 중엔 체크 무시하고 호버 위치까지만 미리보기 */
+    .rating:hover label svg{fill:none; stroke:#425776}
+    .rating:hover label:hover ~ label svg,
+    .rating:hover label:hover svg{fill:#ffe07a; stroke:#f7c948}
+
+    /* 카드 그리드 */
+    .grid{display:grid; grid-template-columns:repeat(3,1fr); gap:14px}
+    .card{border:1px solid #1f2a40; border-radius:12px; overflow:hidden; background:#0c1426}
+    .card img{width:100%; height:200px; object-fit:cover}
+    .card .name{padding:10px 12px; font-weight:600; border-top:1px solid #152036}
+    .pill{display:inline-block; background:#0f1a30; border:1px solid #1f2a40; color:#9cc2ff; border-radius:999px; padding:3px 8px; font-size:12px; margin:8px 12px 12px}
+
+    @media (max-width:880px){ .grid{grid-template-columns:repeat(2,1fr)} }
+    @media (max-width:580px){ .grid{grid-template-columns:1fr} .rating label{width:34px; height:34px} .rating svg{width:20px; height:20px} }
+  </style>
+  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+  <div class="tv">
+    <div class="bezel">
+      <div class="screen">
+        <div class="glow"></div>
+        <div class="header">
+          <h1>K드라마 추천 서비스(세바스찬)</h1>
+          <button class="btn" id="submit">추천 받기</button>
+        </div>
+
+        <div class="section">
+          <div class="muted" style="margin-bottom:8px">장르별 선호도를 0~5로 선택하세요. (0은 전혀 선호하지 않음)</div>
+          <div id="pref-wrap" style="display:flex; flex-direction:column; gap:10px"></div>
+        </div>
+
+        <div id="result" class="section" style="display:none;">
+          <div class="header" style="margin-bottom:8px"><b>추천된 드라마 Top 3</b><button class="btn" id="reset">← 다시 입력하기</button></div>
+          <div class="grid" id="reco"></div>
+          <div class="muted" style="text-align:center; margin-top:10px">입력한 장르 선호도를 바탕으로 가장 잘 맞는 드라마를 추천합니다.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+let ITEMS=[]; // {id, name, vec}
+const FEATURES=["로맨스","판타지","감동","코믹","교훈","힐링","액션","스릴러"];
+
+function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#039;'); }
+function starSVG(){return `<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M12 2l2.95 6.16 6.79.59-5.12 4.39 1.55 6.69L12 16.9 5.83 19.83l1.55-6.69L2.26 8.75l6.79-.59L12 2z'/></svg>`}
+
+function starRowHTML(label, idx){
+  // values: 5..0 (row-reverse)
+  const inputs = [5,4,3,2,1,0].map(v=>`
+    <input type=\"radio\" id=\"pref-${idx}-${v}\" name=\"pref-${idx}\" value=\"${v}\">\n    <label for=\"pref-${idx}-${v}\" title=\"${v}점\">${starSVG()}</label>
+  `).join('');
+  return `<div class=\"question\">\n    <div class=\"qname\">${escapeHtml(label)}</div>\n    <div class=\"rating\" role=\"radiogroup\" aria-label=\"${escapeHtml(label)} 선호도 (0~5)\">${inputs}</div>\n  </div>`;
+}
+
+function buildPrefInputs(){
+  const wrap=document.getElementById('pref-wrap');
+  wrap.innerHTML = FEATURES.map((f,idx)=> starRowHTML(f, idx)).join('');
+}
+
+function imgOnError(img){
+  img.onerror=null;
+  img.src = `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'><rect width='100%' height='100%' fill='%230b1220'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='system-ui' font-size='16' fill='%2394a3b8'>이미지 없음</text></svg>`;
+}
+
+async function loadCSV(){
+  const url = 'data/K드라마데이터.csv' + `?v=${Date.now()}`;
+  const res = await fetch(url);
+  const text = await res.text();
+  const parsed = Papa.parse(text, {skipEmptyLines:true});
+  const rows = parsed.data;
+  if(rows.length<2) return;
+
+  ITEMS = [];
+  for(let i=1;i<rows.length;i++){
+    const r = rows[i];
+    if(!r || r.length<10) continue;
+    const id = String(r[0]).trim();
+    const name = r[1];
+    const vec = r.slice(2).map(v => Number(v||0));
+    ITEMS.push({id, name, vec});
+  }
+}
+
+function euclidean(a,b){ let sum=0; for(let i=0;i<a.length;i++){ const d=(a[i]-b[i]); sum+=d*d; } return Math.sqrt(sum); }
+
+function getPrefs(){
+  return FEATURES.map((_,i)=>{
+    const el = document.querySelector(`input[name=\\\"pref-${i}\\\"]:checked`);
+    return el ? Number(el.value) : 0; // 기본 0
+  });
+}
+
+function recommend(){
+  const prefs = getPrefs();
+  const list=[]; for(let i=0;i<ITEMS.length;i++){ list.push({i, dist: euclidean(prefs, ITEMS[i].vec)}); }
+  list.sort((a,b)=>a.dist-b.dist); return list.slice(0,3);
+}
+
+function renderRecommendations(top){
+  const wrap=document.getElementById('reco');
+  wrap.innerHTML = top.map((t,rank)=>{ const it=ITEMS[t.i]; return `
+    <div class=\"card\">
+      <img src=\"img/${it.id}.jpg\" alt=\"${escapeHtml(it.name)}\" onerror=\"imgOnError(this)\">
+      <div class=\"name\">${rank+1}. ${escapeHtml(it.name)}</div>
+      <div class=\"pill\">거리 ${Math.round(t.dist*100)/100}</div>
+    </div>`; }).join('');
+}
+
+document.getElementById('submit').addEventListener('click',()=>{
+  const top = recommend(); renderRecommendations(top); document.getElementById('result').style.display='block';
+});
+
+document.getElementById('reset').addEventListener('click',()=>{ document.getElementById('result').style.display='none'; });
+
+loadCSV(); buildPrefInputs();
+</script>
+</body>
+</html>
