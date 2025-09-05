@@ -5,14 +5,15 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>K드라마 추천 서비스(세바스찬)</title>
   <style>
-    :root{
-      --bg:#0b0f14; --tv:#111826; --screen:#0e1420; --stroke:#64748b; --text:#e5e7eb; --muted:#94a3b8; --accent:#60a5fa; --card:#0c1220;
-    }
-    html,body{margin:0; min-height:100vh; background:radial-gradient(1200px 600px at 50% -10%, #172033, #0b0f14 60%); color:var(--text); font-family:system-ui,Apple SD Gothic Neo,Segoe UI,Roboto,맑은 고딕,sans-serif;}
+    :root{ --bg:#0b0f14; --tv:#111826; --screen:#0e1420; --stroke:#64748b; --text:#e5e7eb; --muted:#94a3b8; --accent:#60a5fa; --card:#0c1220; }
+
+    /* 전체 레이아웃: 뷰포트 기준 스크롤 보장 */
+    html,body{margin:0; min-height:100svh; background:radial-gradient(1200px 600px at 50% -10%, #172033, #0b0f14 60%); color:var(--text); font-family:system-ui,Apple SD Gothic Neo,Segoe UI,Roboto,맑은 고딕,sans-serif; overflow:auto}
 
     .tv{width:min(1000px,96vw); border-radius:28px; background:var(--tv); box-shadow:0 40px 120px rgba(0,0,0,.35), inset 0 0 0 2px rgba(255,255,255,.04); margin:24px auto; padding:18px;}
     .bezel{border-radius:20px; background:linear-gradient(180deg,#111b2c,#0b1222); box-shadow:inset 0 0 0 1px rgba(255,255,255,.04), inset 0 0 40px rgba(0,0,0,.5); padding:18px;}
-    .screen{border-radius:16px; background:linear-gradient(180deg,#0c1424,#0a1120); position:relative; overflow:auto; padding:20px 20px 28px; box-shadow:inset 0 0 80px rgba(0,0,0,.55);}
+    /* 화면 영역은 뷰포트에 맞춰 내부 스크롤 */
+    .screen{border-radius:16px; background:linear-gradient(180deg,#0c1424,#0a1120); position:relative; overflow:auto; padding:20px 20px 28px; box-shadow:inset 0 0 80px rgba(0,0,0,.55); max-height:calc(100svh - 96px);}
     .screen::before{content:""; position:absolute; inset:0; pointer-events:none; opacity:.14; background:repeating-linear-gradient(180deg, rgba(255,255,255,.06) 0 1px, transparent 1px 3px);} 
     .glow{position:absolute; inset:-6% -6% auto -6%; height:30%; filter:blur(32px); opacity:.25; z-index:-1; background:radial-gradient(600px 160px at 50% 0%, #60a5fa33, transparent 60%);} 
 
@@ -48,7 +49,7 @@
 <body>
   <div class="tv">
     <div class="bezel">
-      <div class="screen">
+      <div class="screen" id="screen">
         <div class="glow"></div>
         <div class="header">
           <h1>K드라마 추천 서비스(세바스찬)</h1>
@@ -95,27 +96,35 @@ function buildPrefInputs(){
 function imgOnError(img){img.onerror=null; img.src=`data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'><rect width='100%' height='100%' fill='%230b1220'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='system-ui' font-size='16' fill='%2394a3b8'>이미지 없음</text></svg>`;}
 
 async function loadCSV(){
-  const url='data/K드라마데이터.csv'+`?v=${Date.now()}`;
-  const res=await fetch(url);
-  const text=await res.text();
-  const parsed=Papa.parse(text,{skipEmptyLines:true});
-  const rows=parsed.data; if(rows.length<2) return;
-  ITEMS=[];
-  for(let i=1;i<rows.length;i++){
-    const r=rows[i]; if(!r||r.length<10) continue;
-    const id=String(r[0]).trim(); const name=r[1];
-    const vec=r.slice(2).map(v=>Number((v||"0").toString().trim()));
-    ITEMS.push({id,name,vec});
+  try{
+    const url = `data/${encodeURIComponent('K드라마데이터.csv')}?v=${Date.now()}`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('CSV 응답 오류');
+    const text = await res.text();
+    const parsed = Papa.parse(text,{skipEmptyLines:true});
+    const rows = parsed.data; if(!rows || rows.length<2) throw new Error('CSV 데이터 없음');
+
+    ITEMS=[];
+    for(let i=1;i<rows.length;i++){
+      const r=rows[i]; if(!r||r.length<10) continue;
+      const id=String(r[0]).trim(); const name=r[1];
+      const vec=r.slice(2).map(v=>{const n=Number(String(v??'').trim()); return Number.isFinite(n)?n:0;});
+      if(name && vec.length===8) ITEMS.push({id,name,vec});
+    }
+  }catch(e){
+    console.error('[loadCSV] 실패:', e);
+    ITEMS=[];
   }
 }
 
-function euclidean(a,b){let sum=0; for(let i=0;i<a.length;i++){const d=(a[i]-b[i]); sum+=d*d;} return Math.sqrt(sum);}
+function euclidean(a,b){let sum=0; for(let i=0;i<a.length;i++){const d=(Number(a[i]||0)-Number(b[i]||0)); sum+=d*d;} return Math.sqrt(sum);}  
 
 function getPrefs(){
   return FEATURES.map((_,i)=>{const el=document.querySelector(`input[name="pref-${i}"]:checked`); return el?Number(el.value):0;});
 }
 
 function recommend(){
+  if(!ITEMS.length) return [];
   const prefs=getPrefs();
   const list=[]; for(let i=0;i<ITEMS.length;i++){list.push({i,dist:euclidean(prefs,ITEMS[i].vec)});} 
   list.sort((a,b)=>a.dist-b.dist); return list.slice(0,3);
@@ -123,6 +132,10 @@ function recommend(){
 
 function renderRecommendations(top){
   const wrap=document.getElementById('reco');
+  if(!top.length){
+    wrap.innerHTML = `<div class="muted">추천할 데이터를 불러오지 못했습니다. CSV 경로와 파일명을 확인하세요.</div>`;
+    return;
+  }
   wrap.innerHTML=top.map((t,rank)=>{const it=ITEMS[t.i];return `<div class="card">
       <img src="img/${it.id}.jpg" alt="${escapeHtml(it.name)}" onerror="imgOnError(this)">
       <div class="name">${rank+1}. ${escapeHtml(it.name)}</div>
@@ -130,7 +143,16 @@ function renderRecommendations(top){
     </div>`;}).join('');
 }
 
-document.getElementById('submit').addEventListener('click',()=>{const top=recommend();renderRecommendations(top);document.getElementById('result').style.display='block';});
+// 버튼 동작: 추천 및 화면 상단 스크롤 보장
+const screenEl = document.getElementById('screen');
+document.getElementById('submit').addEventListener('click',async()=>{
+  if(!ITEMS.length){ await loadCSV(); }
+  const top=recommend();
+  renderRecommendations(top);
+  document.getElementById('result').style.display='block';
+  // 화면 상단으로 스크롤
+  screenEl.scrollTo({top:0, behavior:'smooth'});
+});
 
 document.getElementById('reset').addEventListener('click',()=>{document.getElementById('result').style.display='none';});
 
